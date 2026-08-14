@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main  # ⚡ Runs automatically every time you push code to the 'main' branch
+  workflow_dispatch: #ADD THIS LINE (allows manual triggering)
 
 jobs:
   build-and-push:
