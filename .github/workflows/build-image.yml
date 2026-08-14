@@ -34,6 +34,8 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
+        provenance: false
+        annotations: false
         # ⚠️ Replace 'your-namespace' and 'your-repo' with your actual ACR values
         tags: |
           ${{ secrets.ACR_REGISTRY }}/imhkcortexcloud/demo:latest
