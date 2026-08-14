@@ -1,3 +1,5 @@
+FROM distributions.traps.paloaltonetworks.com/agent-docker-pull/fb3a9c3931e64c6d9cca8bda5a021a22/method:9.3.0.220 AS cortex_agent
+
 FROM node:24 AS installer
 COPY . /juice-shop
 WORKDIR /juice-shop
@@ -38,4 +40,32 @@ WORKDIR /juice-shop
 COPY --from=installer --chown=65532:0 /juice-shop .
 USER 65532
 EXPOSE 3000
-CMD ["/juice-shop/build/app.js"]
+
+# --- Cortex Agent ---
+
+USER root
+
+COPY --from=cortex_agent /opt/traps /opt/traps
+COPY --from=cortex_agent /etc/panw-init /etc/panw-init
+COPY --from=cortex_agent /var/log/traps-install.log /var/log/traps-install.log
+COPY --from=cortex_agent /etc/ssl/certs/ /etc/ssl/certs/
+COPY --from=cortex_agent /usr/share/ca-certificates/ /usr/share/ca-certificates/
+
+ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
+    XDR_INIT_ROOT_DIR="/etc/panw-init" \
+    XDR_DISTRIBUTION_ID="fb3a9c3931e64c6d9cca8bda5a021a22" \
+    XDR_CONTAINER_MODE="embeddedcontainer" \
+    XDR_DISTRIBUTION_SERVER="https://distributions.traps.paloaltonetworks.com"
+
+RUN mkdir -p /usr/lib/ssl/certs && \
+    ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
+    ln -sf /etc/ssl/certs /usr/lib/ssl/certs
+
+RUN ln -sf /opt/traps/bin/initd /initd
+
+RUN /opt/traps/scripts/embedded_caas/musl_compat.sh \
+ && /opt/traps/scripts/embedded_caas/alpine_shims.sh
+
+RUN mkdir -p /etc/panw && echo '["/juice-shop/build/app.js"]' > /etc/panw/dypd_entry && chmod 666 /etc/panw/dypd_entry
+
+ENTRYPOINT ["/initd"]
