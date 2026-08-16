@@ -1,6 +1,6 @@
 FROM distributions.traps.paloaltonetworks.com/agent-docker-pull/fb3a9c3931e64c6d9cca8bda5a021a22/method:9.3.0.220 AS cortex_agent
 
-FROM node:24 AS installer
+FROM node:24-slim AS installer
 COPY . /juice-shop
 WORKDIR /juice-shop
 RUN npm install -g typescript@^6.0.3
@@ -21,7 +21,7 @@ ARG CYCLONEDX_NPM_VERSION='^2.0.0||^3.0.0||^4.0.0'
 RUN npm install -g @cyclonedx/cyclonedx-npm@$CYCLONEDX_NPM_VERSION
 RUN npm run sbom
 
-FROM gcr.io/distroless/nodejs24-debian13:debug
+FROM gcr.io/distroless/nodejs24-debian13
 ARG BUILD_DATE
 ARG VCS_REF
 LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
