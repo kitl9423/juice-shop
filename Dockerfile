@@ -57,9 +57,10 @@ ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
     XDR_CONTAINER_MODE="embeddedcontainer" \
     XDR_DISTRIBUTION_SERVER="https://distributions.traps.paloaltonetworks.com"
 
+# Fix: Use mkdir -p and ln -sf / ln -sfn to overwrite existing target paths
 RUN mkdir -p /usr/lib/ssl/certs && \
     ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
-    ln -sf /etc/ssl/certs /usr/lib/ssl/certs
+    ln -sfn /etc/ssl/certs /usr/lib/ssl/certs
 
 RUN ln -sf /opt/traps/bin/initd /initd
 
