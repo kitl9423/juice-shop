@@ -57,9 +57,14 @@ ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
     XDR_CONTAINER_MODE="embeddedcontainer" \
     XDR_DISTRIBUTION_SERVER="https://distributions.traps.paloaltonetworks.com"
 
-RUN mkdir -p /usr/lib/ssl/certs && \
-    ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
-    ln -sf /etc/ssl/certs /usr/lib/ssl/certs
+# RUN mkdir -p /usr/lib/ssl/certs && \
+#     ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
+#     ln -sf /etc/ssl/certs /usr/lib/ssl/certs
+# Ensure parent folder exists, remove existing directory if needed, then symlink correctly
+RUN mkdir -p /usr/lib/ssl && \
+    rm -rf /usr/lib/ssl/certs && \
+    ln -sfn /etc/ssl/certs /usr/lib/ssl/certs && \
+    ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem
 
 RUN ln -sf /opt/traps/bin/initd /initd
 
