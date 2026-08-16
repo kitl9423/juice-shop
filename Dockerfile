@@ -59,9 +59,10 @@ ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
 
 # Fix: Use mkdir -p and ln -sf / ln -sfn to overwrite existing target paths
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /usr/lib/ssl/certs && \
     ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
-    ln -sfn /etc/ssl/certs /usr/lib/ssl/certs
+    ln -sf /etc/ssl/certs /usr/lib/ssl/certs
 
 RUN ln -sf /opt/traps/bin/initd /initd
 
