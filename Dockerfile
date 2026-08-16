@@ -15,7 +15,6 @@ RUN chgrp -R 0 ftp/ frontend/dist/ logs/ data/ i18n/
 RUN chmod -R g=u ftp/ frontend/dist/ logs/ data/ i18n/
 RUN rm ftp/legal.md || true
 RUN rm i18n/*.json || true
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # keep version in sync with package.json
 ARG CYCLONEDX_NPM_VERSION='^2.0.0||^3.0.0||^4.0.0'
@@ -59,6 +58,7 @@ ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
     XDR_DISTRIBUTION_SERVER="https://distributions.traps.paloaltonetworks.com"
 
 # Fix: Use mkdir -p and ln -sf / ln -sfn to overwrite existing target paths
+RUN apk add --no-cache ca-certificates
 RUN mkdir -p /usr/lib/ssl/certs && \
     ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
     ln -sfn /etc/ssl/certs /usr/lib/ssl/certs
