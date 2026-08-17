@@ -1,7 +1,7 @@
 # Stage 1: Cortex Agent artifacts source
 FROM distributions.traps.paloaltonetworks.com/agent-docker-pull/fb3a9c3931e64c6d9cca8bda5a021a22/method:9.3.0.220 AS cortex_agent
 
-# Stage 2: Build & Installer environment (contains /bin/sh)
+# Stage 2: Build & Installer environment (Debian-based, has /bin/sh)
 FROM node:24-slim AS installer
 
 COPY . /juice-shop
@@ -21,32 +21,33 @@ RUN chmod -R g=u ftp/ frontend/dist/ logs/ data/ i18n/
 RUN rm ftp/legal.md || true
 RUN rm i18n/*.json || true
 
-# keep version in sync with package.json
+# Keep version in sync with package.json
 ARG CYCLONEDX_NPM_VERSION='^2.0.0||^3.0.0||^4.0.0'
 RUN npm install -g @cyclonedx/cyclonedx-npm@$CYCLONEDX_NPM_VERSION
 RUN npm run sbom
 
-# --- Cortex Agent Preparation in Installer Stage ---
-# Copy Cortex Agent files into a staging directory
-COPY --from=cortex_agent /opt/traps /staging/opt/traps
-COPY --from=cortex_agent /etc/panw-init /staging/etc/panw-init
-COPY --from=cortex_agent /var/log/traps-install.log /staging/var/log/traps-install.log
-COPY --from=cortex_agent /etc/ssl/certs/ /staging/etc/ssl/certs/
-COPY --from=cortex_agent /usr/share/ca-certificates/ /staging/usr/share/ca-certificates/
+# --- Cortex Agent Setup in Installer Stage ---
+# Copy Cortex files into their real destination paths on the installer image
+COPY --from=cortex_agent /opt/traps /opt/traps
+COPY --from=cortex_agent /etc/panw-init /etc/panw-init
+COPY --from=cortex_agent /var/log/traps-install.log /var/log/traps-install.log
+COPY --from=cortex_agent /etc/ssl/certs/ /etc/ssl/certs/
+COPY --from=cortex_agent /usr/share/ca-certificates/ /usr/share/ca-certificates/
 
-# Run Cortex Agent preparation scripts on staged files
-RUN /staging/opt/traps/scripts/embedded_caas/musl_compat.sh \
- && /staging/opt/traps/scripts/embedded_caas/alpine_shims.sh
+# Run scripts if executable; ignore non-zero exit if musl glibc mismatch occurs
+RUN chmod +x /opt/traps/scripts/embedded_caas/*.sh || true \
+ && /opt/traps/scripts/embedded_caas/musl_compat.sh || true \
+ && /opt/traps/scripts/embedded_caas/alpine_shims.sh || true
 
-# Prepare symlinks, permissions, and configuration inside staging directory
-RUN mkdir -p /staging/usr/lib/ssl \
- && rm -rf /staging/usr/lib/ssl/certs \
- && ln -sfn /etc/ssl/certs /staging/usr/lib/ssl/certs \
- && ln -sf /etc/ssl/certs/ca-certificates.crt /staging/usr/lib/ssl/cert.pem \
- && ln -sf /opt/traps/bin/initd /staging/initd \
- && mkdir -p /staging/etc/panw \
- && echo '["/juice-shop/build/app.js"]' > /staging/etc/panw/dypd_entry \
- && chmod 666 /staging/etc/panw/dypd_entry
+# Prepare SSL links and entrypoints in actual locations
+RUN mkdir -p /usr/lib/ssl \
+ && rm -rf /usr/lib/ssl/certs \
+ && ln -sfn /etc/ssl/certs /usr/lib/ssl/certs \
+ && ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem \
+ && ln -sf /opt/traps/bin/initd /initd \
+ && mkdir -p /etc/panw \
+ && echo '["/juice-shop/build/app.js"]' > /etc/panw/dypd_entry \
+ && chmod 666 /etc/panw/dypd_entry
 
 # Stage 3: Final Distroless Production Image
 FROM gcr.io/distroless/nodejs24-debian13
@@ -69,8 +70,15 @@ LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
 WORKDIR /juice-shop
 COPY --from=installer --chown=65532:0 /juice-shop .
 
-# Copy all prepared Cortex files, directories, and symlinks directly to root /
-COPY --from=installer /staging/ /
+# Copy prepared Cortex paths directly into distroless image
+COPY --from=installer /opt/traps /opt/traps
+COPY --from=installer /etc/panw-init /etc/panw-init
+COPY --from=installer /etc/panw /etc/panw
+COPY --from=installer /var/log/traps-install.log /var/log/traps-install.log
+COPY --from=installer /etc/ssl/certs /etc/ssl/certs
+COPY --from=installer /usr/share/ca-certificates /usr/share/ca-certificates
+COPY --from=installer /usr/lib/ssl /usr/lib/ssl
+COPY --from=installer /initd /initd
 
 ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
     XDR_INIT_ROOT_DIR="/etc/panw-init" \
