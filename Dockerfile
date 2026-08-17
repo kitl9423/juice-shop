@@ -15,17 +15,33 @@ RUN chgrp -R 0 ftp/ frontend/dist/ logs/ data/ i18n/
 RUN chmod -R g=u ftp/ frontend/dist/ logs/ data/ i18n/
 RUN rm ftp/legal.md || true
 RUN rm i18n/*.json || true
-RUN mkdir -p /tmp/cortex/usr/lib/ssl /tmp/cortex/etc/panw \
-    && ln -sfn /etc/ssl/certs /tmp/cortex/usr/lib/ssl/certs \
-    && ln -sf /etc/ssl/certs/ca-certificates.crt /tmp/cortex/usr/lib/ssl/cert.pem \
-    && ln -sf /opt/traps/bin/initd /tmp/cortex/initd \
-    && echo '["/juice-shop/build/app.js"]' > /tmp/cortex/etc/panw/dypd_entry \
-    && chmod 666 /tmp/cortex/etc/panw/dypd_entry
 
 # keep version in sync with package.json
 ARG CYCLONEDX_NPM_VERSION='^2.0.0||^3.0.0||^4.0.0'
 RUN npm install -g @cyclonedx/cyclonedx-npm@$CYCLONEDX_NPM_VERSION
 RUN npm run sbom
+
+# --- Cortex Agent Preparation in Installer Stage ---
+# Copy Cortex Agent files into a staging directory
+COPY --from=cortex_agent /opt/traps /staging/opt/traps
+COPY --from=cortex_agent /etc/panw-init /staging/etc/panw-init
+COPY --from=cortex_agent /var/log/traps-install.log /staging/var/log/traps-install.log
+COPY --from=cortex_agent /etc/ssl/certs/ /staging/etc/ssl/certs/
+COPY --from=cortex_agent /usr/share/ca-certificates/ /staging/usr/share/ca-certificates/
+
+# Run Cortex Agent preparation scripts on staged files
+RUN /staging/opt/traps/scripts/embedded_caas/musl_compat.sh \
+ && /staging/opt/traps/scripts/embedded_caas/alpine_shims.sh
+
+# Prepare symlinks, permissions, and configuration inside staging directory
+RUN mkdir -p /staging/usr/lib/ssl \
+ && rm -rf /staging/usr/lib/ssl/certs \
+ && ln -sfn /etc/ssl/certs /staging/usr/lib/ssl/certs \
+ && ln -sf /etc/ssl/certs/ca-certificates.crt /staging/usr/lib/ssl/cert.pem \
+ && ln -sf /opt/traps/bin/initd /staging/initd \
+ && mkdir -p /staging/etc/panw \
+ && echo '["/juice-shop/build/app.js"]' > /staging/etc/panw/dypd_entry \
+ && chmod 666 /staging/etc/panw/dypd_entry
 
 FROM gcr.io/distroless/nodejs24-debian13
 ARG BUILD_DATE
@@ -44,7 +60,16 @@ LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
     org.opencontainers.image.created=$BUILD_DATE
 WORKDIR /juice-shop
 COPY --from=installer --chown=65532:0 /juice-shop .
-COPY --from=installer /tmp/cortex/ /
+
+# Copy all prepared Cortex files, directories, and symlinks directly to root /
+COPY --from=installer /staging/ /
+
+ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
+    XDR_INIT_ROOT_DIR="/etc/panw-init" \
+    XDR_DISTRIBUTION_ID="fb3a9c3931e64c6d9cca8bda5a021a22" \
+    XDR_CONTAINER_MODE="embeddedcontainer" \
+    XDR_DISTRIBUTION_SERVER="https://distributions.traps.paloaltonetworks.com"
+
 USER 65532
 EXPOSE 3000
 
@@ -58,20 +83,13 @@ COPY --from=cortex_agent /var/log/traps-install.log /var/log/traps-install.log
 COPY --from=cortex_agent /etc/ssl/certs/ /etc/ssl/certs/
 COPY --from=cortex_agent /usr/share/ca-certificates/ /usr/share/ca-certificates/
 
-ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
-    XDR_INIT_ROOT_DIR="/etc/panw-init" \
-    XDR_DISTRIBUTION_ID="fb3a9c3931e64c6d9cca8bda5a021a22" \
-    XDR_CONTAINER_MODE="embeddedcontainer" \
-    XDR_DISTRIBUTION_SERVER="https://distributions.traps.paloaltonetworks.com"
-
 # RUN mkdir -p /usr/lib/ssl/certs && \
 #     ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
 #     ln -sf /etc/ssl/certs /usr/lib/ssl/certs
 # Ensure parent folder exists, remove existing directory if needed, then symlink correctly
-RUN mkdir -p /usr/lib/ssl && \
-    rm -rf /usr/lib/ssl/certs && \
-    ln -sfn /etc/ssl/certs /usr/lib/ssl/certs && \
-    ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem
+RUN mkdir -p /usr/lib/ssl/certs && \
+    ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
+    ln -sf /etc/ssl/certs /usr/lib/ssl/certs
 
 RUN ln -sf /opt/traps/bin/initd /initd
 
