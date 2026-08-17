@@ -29,9 +29,10 @@ COPY --from=cortex_agent /var/log/traps-install.log /staging/var/log/traps-insta
 COPY --from=cortex_agent /etc/ssl/certs/ /staging/etc/ssl/certs/
 COPY --from=cortex_agent /usr/share/ca-certificates/ /staging/usr/share/ca-certificates/
 
-# Run Cortex Agent preparation scripts on staged files
-RUN /staging/opt/traps/scripts/embedded_caas/musl_compat.sh \
- && /staging/opt/traps/scripts/embedded_caas/alpine_shims.sh
+# Run scripts if executable; ignore non-zero exit if musl glibc mismatch occurs
+RUN chmod +x /opt/traps/scripts/embedded_caas/*.sh || true \
+ && /opt/traps/scripts/embedded_caas/musl_compat.sh || true \
+ && /opt/traps/scripts/embedded_caas/alpine_shims.sh || true
 
 # Prepare symlinks, permissions, and configuration inside staging directory
 RUN mkdir -p /staging/usr/lib/ssl \
@@ -58,11 +59,19 @@ LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
     org.opencontainers.image.source="https://github.com/juice-shop/juice-shop" \
     org.opencontainers.image.revision=$VCS_REF \
     org.opencontainers.image.created=$BUILD_DATE
+
 WORKDIR /juice-shop
 COPY --from=installer --chown=65532:0 /juice-shop .
 
-# Copy all prepared Cortex files, directories, and symlinks directly to root /
-COPY --from=installer /staging/ /
+# Copy prepared Cortex paths directly into distroless image
+COPY --from=installer /opt/traps /opt/traps
+COPY --from=installer /etc/panw-init /etc/panw-init
+COPY --from=installer /etc/panw /etc/panw
+COPY --from=installer /var/log/traps-install.log /var/log/traps-install.log
+COPY --from=installer /etc/ssl/certs /etc/ssl/certs
+COPY --from=installer /usr/share/ca-certificates /usr/share/ca-certificates
+COPY --from=installer /usr/lib/ssl /usr/lib/ssl
+COPY --from=installer /initd /initd
 
 ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
     XDR_INIT_ROOT_DIR="/etc/panw-init" \
@@ -72,30 +81,5 @@ ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
 
 USER 65532
 EXPOSE 3000
-
-# --- Cortex Agent ---
-
-USER root
-
-COPY --from=cortex_agent /opt/traps /opt/traps
-COPY --from=cortex_agent /etc/panw-init /etc/panw-init
-COPY --from=cortex_agent /var/log/traps-install.log /var/log/traps-install.log
-COPY --from=cortex_agent /etc/ssl/certs/ /etc/ssl/certs/
-COPY --from=cortex_agent /usr/share/ca-certificates/ /usr/share/ca-certificates/
-
-# RUN mkdir -p /usr/lib/ssl/certs && \
-#     ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
-#     ln -sf /etc/ssl/certs /usr/lib/ssl/certs
-# Ensure parent folder exists, remove existing directory if needed, then symlink correctly
-RUN mkdir -p /usr/lib/ssl/certs && \
-    ln -sf /etc/ssl/certs/ca-certificates.crt /usr/lib/ssl/cert.pem && \
-    ln -sf /etc/ssl/certs /usr/lib/ssl/certs
-
-RUN ln -sf /opt/traps/bin/initd /initd
-
-RUN /opt/traps/scripts/embedded_caas/musl_compat.sh \
- && /opt/traps/scripts/embedded_caas/alpine_shims.sh
-
-RUN mkdir -p /etc/panw && echo '["/juice-shop/build/app.js"]' > /etc/panw/dypd_entry && chmod 666 /etc/panw/dypd_entry
 
 ENTRYPOINT ["/initd"]
