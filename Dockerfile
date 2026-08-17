@@ -1,8 +1,13 @@
+# Stage 1: Cortex Agent artifacts source
 FROM distributions.traps.paloaltonetworks.com/agent-docker-pull/fb3a9c3931e64c6d9cca8bda5a021a22/method:9.3.0.220 AS cortex_agent
 
+# Stage 2: Build & Installer environment (contains /bin/sh)
 FROM node:24-slim AS installer
+
 COPY . /juice-shop
 WORKDIR /juice-shop
+
+# Install dependencies and build Juice Shop
 RUN npm install -g typescript@^6.0.3
 RUN npm install --omit=dev
 RUN npm dedupe --omit=dev
@@ -29,10 +34,9 @@ COPY --from=cortex_agent /var/log/traps-install.log /staging/var/log/traps-insta
 COPY --from=cortex_agent /etc/ssl/certs/ /staging/etc/ssl/certs/
 COPY --from=cortex_agent /usr/share/ca-certificates/ /staging/usr/share/ca-certificates/
 
-# Run scripts if executable; ignore non-zero exit if musl glibc mismatch occurs
-RUN chmod +x /opt/traps/scripts/embedded_caas/*.sh || true \
- && /opt/traps/scripts/embedded_caas/musl_compat.sh || true \
- && /opt/traps/scripts/embedded_caas/alpine_shims.sh || true
+# Run Cortex Agent preparation scripts on staged files
+RUN /staging/opt/traps/scripts/embedded_caas/musl_compat.sh \
+ && /staging/opt/traps/scripts/embedded_caas/alpine_shims.sh
 
 # Prepare symlinks, permissions, and configuration inside staging directory
 RUN mkdir -p /staging/usr/lib/ssl \
@@ -44,7 +48,9 @@ RUN mkdir -p /staging/usr/lib/ssl \
  && echo '["/juice-shop/build/app.js"]' > /staging/etc/panw/dypd_entry \
  && chmod 666 /staging/etc/panw/dypd_entry
 
+# Stage 3: Final Distroless Production Image
 FROM gcr.io/distroless/nodejs24-debian13
+
 ARG BUILD_DATE
 ARG VCS_REF
 LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
@@ -63,15 +69,8 @@ LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
 WORKDIR /juice-shop
 COPY --from=installer --chown=65532:0 /juice-shop .
 
-# Copy prepared Cortex paths directly into distroless image
-COPY --from=installer /opt/traps /opt/traps
-COPY --from=installer /etc/panw-init /etc/panw-init
-COPY --from=installer /etc/panw /etc/panw
-COPY --from=installer /var/log/traps-install.log /var/log/traps-install.log
-COPY --from=installer /etc/ssl/certs /etc/ssl/certs
-COPY --from=installer /usr/share/ca-certificates /usr/share/ca-certificates
-COPY --from=installer /usr/lib/ssl /usr/lib/ssl
-COPY --from=installer /initd /initd
+# Copy all prepared Cortex files, directories, and symlinks directly to root /
+COPY --from=installer /staging/ /
 
 ENV XDR_CA_CERTS_LOCATION="/etc/ssl/certs/ca-certificates.crt" \
     XDR_INIT_ROOT_DIR="/etc/panw-init" \
