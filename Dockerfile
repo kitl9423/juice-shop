@@ -1,7 +1,7 @@
 # Stage 1: Cortex Agent artifacts source
 FROM distributions.traps.paloaltonetworks.com/agent-docker-pull/fb3a9c3931e64c6d9cca8bda5a021a22/method:9.3.0.220 AS cortex_agent
 
-# Stage 2: Build & Installer environment (Debian-based, has /bin/sh)
+# Stage 2: Build & Installer environment (Debian-based, contains /bin/sh)
 FROM node:24-slim AS installer
 
 COPY . /juice-shop
@@ -21,25 +21,19 @@ RUN chmod -R g=u ftp/ frontend/dist/ logs/ data/ i18n/
 RUN rm ftp/legal.md || true
 RUN rm i18n/*.json || true
 
-# Keep version in sync with package.json
+# keep version in sync with package.json
 ARG CYCLONEDX_NPM_VERSION='^2.0.0||^3.0.0||^4.0.0'
 RUN npm install -g @cyclonedx/cyclonedx-npm@$CYCLONEDX_NPM_VERSION
 RUN npm run sbom
 
-# --- Cortex Agent Setup in Installer Stage ---
-# Copy Cortex files into their real destination paths on the installer image
+# --- Cortex Agent Setup ---
 COPY --from=cortex_agent /opt/traps /opt/traps
 COPY --from=cortex_agent /etc/panw-init /etc/panw-init
 COPY --from=cortex_agent /var/log/traps-install.log /var/log/traps-install.log
 COPY --from=cortex_agent /etc/ssl/certs/ /etc/ssl/certs/
 COPY --from=cortex_agent /usr/share/ca-certificates/ /usr/share/ca-certificates/
 
-# Run scripts if executable; ignore non-zero exit if musl glibc mismatch occurs
-RUN chmod +x /opt/traps/scripts/embedded_caas/*.sh || true \
- && /opt/traps/scripts/embedded_caas/musl_compat.sh || true \
- && /opt/traps/scripts/embedded_caas/alpine_shims.sh || true
-
-# Prepare SSL links and entrypoints in actual locations
+# Prepare SSL links and entrypoints directly in standard system paths
 RUN mkdir -p /usr/lib/ssl \
  && rm -rf /usr/lib/ssl/certs \
  && ln -sfn /etc/ssl/certs /usr/lib/ssl/certs \
