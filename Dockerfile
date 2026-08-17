@@ -15,6 +15,12 @@ RUN chgrp -R 0 ftp/ frontend/dist/ logs/ data/ i18n/
 RUN chmod -R g=u ftp/ frontend/dist/ logs/ data/ i18n/
 RUN rm ftp/legal.md || true
 RUN rm i18n/*.json || true
+RUN mkdir -p /tmp/cortex/usr/lib/ssl /tmp/cortex/etc/panw \
+    && ln -sfn /etc/ssl/certs /tmp/cortex/usr/lib/ssl/certs \
+    && ln -sf /etc/ssl/certs/ca-certificates.crt /tmp/cortex/usr/lib/ssl/cert.pem \
+    && ln -sf /opt/traps/bin/initd /tmp/cortex/initd \
+    && echo '["/juice-shop/build/app.js"]' > /tmp/cortex/etc/panw/dypd_entry \
+    && chmod 666 /tmp/cortex/etc/panw/dypd_entry
 
 # keep version in sync with package.json
 ARG CYCLONEDX_NPM_VERSION='^2.0.0||^3.0.0||^4.0.0'
@@ -38,6 +44,7 @@ LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
     org.opencontainers.image.created=$BUILD_DATE
 WORKDIR /juice-shop
 COPY --from=installer --chown=65532:0 /juice-shop .
+COPY --from=installer /tmp/cortex/ /
 USER 65532
 EXPOSE 3000
 
